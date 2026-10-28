@@ -1,0 +1,8 @@
+{
+  "our_company_names": [],
+  "ocr": "auto",
+  "ocr_dpi": 300,
+  "tesseract_cmd": "C:\\Users\\chiraphat\\AppData\\Local\\Programs\\Tesseract-OCR\\tesseract.exe",
+  "host": "127.0.0.1",
+  "port": 8765
+}

@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart PDF Splitter</title>
+<style>
+:root{--bg:#f4f6fa;--card:#fff;--ink:#1b2233;--mut:#6a7490;--line:#dde2ee;--acc:#2f6bff;--accT:#fff;--ok:#12975a;--warn:#d98200;--err:#d33a3a}
+@media (prefers-color-scheme:dark){:root{--bg:#10131b;--card:#1a1f2d;--ink:#e8ebf5;--mut:#9aa4c0;--line:#2a3148;--acc:#6b95ff;--accT:#0b1020;--ok:#35c27d;--warn:#f0a53a;--err:#ff6b6b}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 "Noto Sans Thai","Leelawadee UI",Tahoma,system-ui,sans-serif}
+header{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line);padding:10px 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+h1{font-size:17px;margin:0 8px 0 0}
+button,select,input{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:5px 10px}
+button{cursor:pointer}button.p{background:var(--acc);color:var(--accT);border-color:var(--acc);font-weight:600}
+button:disabled{opacity:.45;cursor:not-allowed}
+.sp{flex:1}.mut{color:var(--mut)}.small{font-size:12px}
+#bar{height:5px;background:var(--line);display:none}#bar i{display:block;height:100%;width:0;background:var(--acc);transition:width .2s}
+#msg{padding:6px 16px;color:var(--mut)}#msg.err{color:var(--err)}
+#banner{margin:8px 16px 0;padding:8px 12px;border:1px solid var(--warn);border-radius:8px;color:var(--warn);display:none}
+#drop{margin:16px;border:2px dashed var(--line);border-radius:12px;padding:40px;text-align:center;color:var(--mut);cursor:pointer;background:var(--card)}
+#drop.over{border-color:var(--acc);color:var(--acc)}
+main{display:none;padding:14px 16px}
+.viewer{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(300px,.8fr);gap:14px;align-items:start}
+#pageImage{position:relative;display:grid;place-items:center;min-height:480px;height:min(78vh,900px);padding:14px;background:var(--card);border:1px solid var(--line);border-radius:10px}
+#pageImage .page-frame{position:relative;display:inline-block;max-width:100%;max-height:100%}
+#pageImage img{display:block;width:auto;height:auto;max-width:100%;max-height:calc(78vh - 60px);object-fit:contain;border:1px solid var(--line);background:#fff}
+.page-number{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);white-space:nowrap;padding:3px 12px;border-radius:999px;background:#111c;color:#fff;font-size:13px;font-weight:600}
+#list{margin-top:14px}.searchbar{display:flex;gap:8px;align-items:center;margin-bottom:10px}.searchbar input{flex:1;min-width:180px;padding:8px 10px}
+.image-nav{position:absolute;top:50%;z-index:1;transform:translateY(-50%);width:40px;height:48px;padding:0;border-radius:999px;background:var(--card);font-size:22px;box-shadow:0 2px 8px #0003}
+.image-nav.prev{left:20px}.image-nav.next{right:20px}
+@media(max-width:1000px){.viewer{grid-template-columns:minmax(0,1fr)}#pageImage{height:min(72vh,820px);min-height:360px}#pageImage img{max-height:calc(72vh - 60px)}aside{position:static;max-height:none}}
+.doc{background:var(--card);border:1px solid var(--line);border-left:6px solid var(--c,#999);border-radius:10px;margin-bottom:12px}
+.doc.flag{box-shadow:0 0 0 2px color-mix(in srgb,var(--warn) 45%,transparent)}
+.dh{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:8px 10px;border-bottom:1px solid var(--line)}
+.doc-actions{display:flex;justify-content:flex-end;padding:0 10px 10px}
+.export-dialog{width:min(640px,calc(100vw - 28px));max-height:85vh;padding:0;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);box-shadow:0 18px 60px #0005}
+.export-dialog::backdrop{background:#10131bcc}
+.export-head,.export-foot{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:14px 16px;border-bottom:1px solid var(--line)}
+.export-head h2{font-size:17px;margin:0}.export-foot{border-top:1px solid var(--line);border-bottom:0}
+.export-list{max-height:50vh;overflow:auto;padding:8px 16px}
+.export-select-all,.export-item{display:flex;align-items:center;gap:10px;padding:8px 6px;border-bottom:1px solid var(--line)}
+.export-select-all{font-weight:600}.export-item span{flex:1;overflow-wrap:anywhere}
+.export-item small{color:var(--mut)}.export-actions{display:flex;width:100%;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+#exportSelectedPdf{margin-left:auto}
+.dh input.nm{flex:1;min-width:160px}.dh input.rg{width:110px}
+.badge{padding:1px 8px;border-radius:999px;font-size:12px;border:1px solid var(--line)}
+.ok{color:var(--ok)}.warn{color:var(--warn)}.err{color:var(--err)}
+.pgs{display:flex;flex-wrap:wrap;gap:4px;padding:10px;min-height:60px;align-items:flex-start}
+.pg{width:104px;text-align:center;font-size:11px;border:2px solid transparent;border-radius:8px;padding:3px;cursor:grab;position:relative}
+.pg.sel{border-color:var(--acc)}.pg.bl img{opacity:.35}
+.pg img{width:100%;display:block;border:1px solid var(--line);background:#fff;border-radius:3px}
+.pg .m{position:absolute;top:5px;left:5px;background:#000a;color:#fff;border-radius:4px;padding:0 4px;font-size:10px}
+.cut{align-self:stretch;width:22px;padding:0;font-size:12px;opacity:.5}.cut:hover{opacity:1;background:var(--acc);color:var(--accT)}
+.fl{padding:6px 12px;font-size:12px;border-top:1px solid var(--line)}
+.fl div{margin:2px 0}
+#bin{background:var(--card);border:1px dashed var(--line);border-radius:10px;padding:8px 10px;margin-bottom:12px}
+aside{position:sticky;top:64px;align-self:start;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;max-height:calc(100vh - 80px);overflow:auto}
+.ev{font-size:12px;margin:2px 0}.ev b{display:inline-block;min-width:34px}
+.ocr-head{display:flex;align-items:center;gap:8px;margin:12px 0 6px}.ocr-head h2{font-size:15px;margin:0}.ocr-head button{margin-left:auto;font-size:12px}
+.ocr-text{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px;margin:0;max-height:min(38vh,420px);overflow:auto}
+.json-details{margin-top:12px;border:1px solid var(--line);border-radius:8px;overflow:hidden}.json-details summary{cursor:pointer;padding:9px 12px;background:var(--bg);font-size:13px;font-weight:600}
+.json-details pre{white-space:pre-wrap;overflow-wrap:anywhere;font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.65;background:var(--card);padding:12px;margin:0;max-height:min(38vh,420px);overflow:auto}
+.json-key{color:#7650b5}.json-string{color:#16834f}.json-number{color:#c16a00}.json-literal{color:#2871cf}
+@media(prefers-color-scheme:dark){.json-key{color:#c6a5ff}.json-string{color:#8fdaa9}.json-number{color:#ffc078}.json-literal{color:#8eb8ff}}
+.confidence{color:var(--mut);font-size:13px;margin:10px 0 0}
+.page-context{font-size:13px;color:var(--mut);padding:8px 10px;background:var(--bg);border-radius:6px;margin-bottom:8px}
+.searchbar{flex-wrap:wrap}.searchbar select{min-width:170px;padding:8px 10px}
+.file-panel{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin:14px 0}
+.file-panel-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.file-list{list-style:none;padding:0;margin:8px 0 0}
+.file-item{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--line)}
+.file-item span{flex:1;overflow-wrap:anywhere}.file-item button{padding:2px 9px;color:var(--err)}
+</style>
+</head>
+<body>
+<header>
+  <h1>✂ Smart PDF Splitter</h1>
+  <span class="sp"></span>
+  <label class="small"><input type="checkbox" id="dropBlank" checked> ไม่ใส่หน้าว่างในไฟล์</label>
+  <button class="p" id="exp" disabled>⬇ ส่งออกเอกสาร</button>
+</header>
+<input id="file" type="file" accept="application/pdf,.pdf" multiple hidden>
+<div id="bar"><i></i></div><div id="msg"></div><div id="banner"></div>
+<div id="drop">ลากไฟล์ PDF มาวางที่นี่ หรือคลิกเพื่อเลือกไฟล์<br><span class="small">ไฟล์จะถูกรวมและประมวลผลในเครื่องของคุณเท่านั้น</span></div>
+<section id="filePanel" class="file-panel" style="display:none">
+  <div class="file-panel-head"><b id="fileCount"></b><span class="sp"></span><button id="pick">เพิ่มไฟล์ PDF</button><button id="combineFiles" class="p">รวมและวิเคราะห์</button><button id="clearFiles">ล้างทั้งหมด</button></div>
+  <ul id="fileList" class="file-list"></ul>
+</section>
+<dialog id="exportDialog" class="export-dialog" aria-labelledby="exportTitle">
+  <div class="export-head"><h2 id="exportTitle">เลือกเอกสารที่จะส่งออก</h2><span class="sp"></span><button id="closeExport" aria-label="ปิด">ปิด</button></div>
+  <div class="export-list">
+    <label class="export-select-all"><input id="selectAllExports" type="checkbox" checked> เลือกทั้งหมด</label>
+    <div id="exportChoices"></div>
+  </div>
+  <div class="export-foot">
+    <div class="export-actions">
+      <button id="exportAllPdf">ดาวน์โหลดทุกไฟล์เป็น PDF</button>
+      <button id="exportAllZip">ดาวน์โหลดทุกไฟล์เป็น ZIP</button>
+      <button class="p" id="exportSelectedPdf">ดาวน์โหลด PDF ที่เลือก</button>
+    </div>
+  </div>
+</dialog>
+<main>
+  <div class="viewer">
+    <div id="pageImage"></div>
+    <aside id="prev"></aside>
+  </div>
+  <section id="list">
+    <div class="searchbar">
+      <label for="docSearch">ค้นหา</label><input id="docSearch" type="search" placeholder="ชื่อไฟล์หรือเลขที่เอกสาร">
+      <label for="docGroup">หมวด</label><select id="docGroup"><option value="">ทุกหมวด</option></select>
+      <label for="docType">ชนิดเอกสาร</label><select id="docType"><option value="">ทุกชนิด</option></select>
+    </div>
+    <div id="docs"></div>
+  </section>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const COLORS={sales:'#2f6bff',expense:'#e08a00',bank:'#12975a',payroll:'#9b59d0',tax:'#d33a3a',other:'#8a93a8'};
+const DOCUMENT_TYPES=[
+  {group:'sales',subtype:'tax_invoice',label:'ใบกำกับภาษี'},
+  {group:'sales',subtype:'receipt',label:'ใบเสร็จรับเงิน'},
+  {group:'sales',subtype:'credit_note',label:'ใบลดหนี้'},
+  {group:'sales',subtype:'debit_note',label:'ใบเพิ่มหนี้'},
+  {group:'sales',subtype:'sales_order',label:'ใบสั่งขาย (SO)'},
+  {group:'sales',subtype:'invoice',label:'ใบแจ้งหนี้ (Invoice)'},
+  {group:'expense',subtype:'po',label:'ใบสั่งซื้อ (PO)'},
+  {group:'expense',subtype:'purchase_invoice',label:'ใบแจ้งหนี้ซื้อ'},
+  {group:'expense',subtype:'quotation',label:'ใบเสนอราคา'},
+  {group:'expense',subtype:'expense_receipt',label:'ใบเสร็จค่าใช้จ่าย'},
+  {group:'bank',subtype:'bank_statement',label:'รายการเดินบัญชี'},
+  {group:'payroll',subtype:'payslip',label:'สลิปเงินเดือน'},
+  {group:'payroll',subtype:'payroll_report',label:'รายงานเงินเดือน'},
+  {group:'tax',subtype:'pp30',label:'ภ.พ.30'},
+  {group:'tax',subtype:'pnd',label:'ภ.ง.ด.'},
+  {group:'tax',subtype:'tax_report',label:'รายงานภาษีซื้อ/ขาย'},
+  {group:'tax',subtype:'wht_cert',label:'หนังสือรับรองหักภาษี ณ ที่จ่าย'},
+  {group:'other',subtype:'unknown',label:'ไม่ทราบประเภท'}
+];
+const STATE_KEY='smart-pdf-splitter-session-v1';
+let job=null,R=null,orig=[],cur=[],bin=[],sel=1,view='cur',drag=null;
+let staged=[],expectedNames=[],mergeId=null,uploading=false,combining=false,analysisRunning=false;
+let displayedOcrJson='';
+
+/* ---------- อัปโหลด + ติดตามความคืบหน้า ---------- */
+const drop=$('#drop');
+$('#pick').onclick=()=>$('#file').click();drop.onclick=()=>$('#file').click();
+$('#file').onchange=e=>{if(e.target.files.length)upload(e.target.files);e.target.value=''};
+['dragover','dragenter'].forEach(t=>drop.addEventListener(t,e=>{e.preventDefault();drop.classList.add('over')}));
+['dragleave','drop'].forEach(t=>drop.addEventListener(t,e=>{e.preventDefault();drop.classList.remove('over')}));
+drop.addEventListener('drop',e=>e.dataTransfer.files.length&&upload(e.dataTransfer.files));
+function msg(t,err){const m=$('#msg');m.textContent=t||'';m.className=err?'err':''}
+function newMergeId(){
+  const bytes=new Uint8Array(16);crypto.getRandomValues(bytes);
+  return [...bytes].map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+function saveStaging(){
+  localStorage.setItem(STATE_KEY,JSON.stringify({version:1,stage:{jobs:staged,names:expectedNames,mergeId}}));
+  renderFiles();
+}
+function renderFiles(){
+  const panel=$('#filePanel'),list=$('#fileList');
+  panel.style.display=staged.length?'block':'none';
+  $('#fileCount').textContent=`ไฟล์ต้นทาง ${staged.length} ไฟล์`;
+  $('#pick').textContent=staged.length?'เพิ่มไฟล์ PDF':'เลือกไฟล์ PDF';
+  $('#pick').disabled=uploading||combining||analysisRunning;
+  $('#combineFiles').disabled=!staged.length||uploading||combining||analysisRunning;
+  $('#clearFiles').disabled=uploading||combining||analysisRunning||!staged.length;
+  list.innerHTML=staged.map((f,i)=>`<li class="file-item"><span>${i+1}. ${esc(f.name)}</span><button onclick="removeSource(${i})" title="นำไฟล์นี้ออก" aria-label="นำ ${esc(f.name)} ออก">ลบ</button></li>`).join('');
+  if(expectedNames.length)$('#fileCount').textContent+=` · ยังอัปโหลดไม่ครบ ${expectedNames.length} ไฟล์`;
+}
+async function deleteServerJob(id){
+  const response=await fetch('/api/jobs/'+id,{method:'DELETE'});
+  const data=await response.json();
+  if(!response.ok&&response.status!==404)throw new Error(data.error||`ลบไฟล์ ${id} ไม่สำเร็จ`);
+}
+async function loadSourceHash(source){
+  if(source.sha256)return source.sha256;
+  const response=await fetch('/api/jobs/'+source.job),data=await response.json();
+  if(!response.ok||!data.sha256)throw new Error(data.error||`อ่านข้อมูลไฟล์ ${source.name} ไม่สำเร็จ`);
+  source.sha256=data.sha256;
+  return source.sha256;
+}
+async function detachCurrentResult(){
+  const old=job;
+  job=null;R=null;orig=[];cur=[];bin=[];sel=1;view='cur';
+  $('main').style.display='none';$('#exp').disabled=true;$('#drop').style.display='block';
+  if(staged.length)saveStaging();
+  if(old)await deleteServerJob(old);
+}
+async function removeSource(index){
+  if(uploading||combining||analysisRunning)return;
+  const source=staged[index];if(!source)return;
+  try{
+    await detachCurrentResult();
+    await deleteServerJob(source.job);
+    staged.splice(index,1);
+    mergeId=staged.length?newMergeId():null;
+    const expectedIndex=expectedNames.indexOf(source.name);
+    if(expectedIndex>=0)expectedNames.splice(expectedIndex,1);
+    if(!staged.length){mergeId=null;expectedNames=[];localStorage.removeItem(STATE_KEY);$('#drop').style.display='block';msg('ลบไฟล์ทั้งหมดแล้ว')}
+    else saveStaging();
+    $('main').style.display='none';$('#drop').style.display='block';
+    renderFiles();
+  }catch(e){saveStaging();renderFiles();msg('ลบไฟล์ไม่สำเร็จ: '+e.message,true)}
+}
+async function clearFiles(){
+  if(uploading||combining||analysisRunning||!staged.length)return;
+  if(!confirm(`ล้างไฟล์ต้นทางทั้งหมด ${staged.length} ไฟล์หรือไม่?`))return;
+  const old=job,ids=staged.map(f=>f.job);
+  job=null;R=null;orig=[];cur=[];bin=[];sel=1;view='cur';$('main').style.display='none';
+  saveStaging();
+  const errors=[];
+  for(const id of [...ids,...(old?[old]:[])])try{await deleteServerJob(id)}catch(e){errors.push(e.message)}
+  staged=[];expectedNames=[];mergeId=null;localStorage.removeItem(STATE_KEY);
+  $('#drop').style.display='block';renderFiles();
+  msg(errors.length?'ล้างรายการแล้ว แต่ลบข้อมูลบางไฟล์จากเครื่องไม่สำเร็จ: '+errors.join('; '):'ล้างไฟล์ทั้งหมดแล้ว',errors.length>0);
+}
+async function upload(fileList){
+  if(uploading||combining||analysisRunning)return;
+  let files=Array.from(fileList);
+  if(files.some(f=>!f.name.toLowerCase().endsWith('.pdf'))){msg('เลือกได้เฉพาะไฟล์ PDF',true);return}
+  if(!files.length)return;
+  if(staged.length+files.length>100){msg('รวมไฟล์ได้ไม่เกิน 100 ไฟล์ต่อครั้ง',true);return}
+  const wasAnalyzed=Boolean(job);
+  let addedUnique=false,autoCombine=false;
+  uploading=true;$('#pick').disabled=true;$('#bar').style.display='block';
+  try{
+    for(const source of staged)await loadSourceHash(source);
+    if(!mergeId)mergeId=newMergeId();
+    const pending=new Map();
+    expectedNames.forEach(name=>pending.set(name,(pending.get(name)||0)+1));
+    files=files.filter(f=>{
+      const count=pending.get(f.name)||0;
+      if(count){pending.set(f.name,count-1);return true}
+      expectedNames.push(f.name);return true;
+    });
+    $('#drop').style.display='block';$('main').style.display='none';$('#exp').disabled=true;renderFiles();
+    saveStaging();
+    for(let i=0;i<files.length;i++){
+      const f=files[i];
+      msg(`กำลังอัปโหลดไฟล์ ${i+1}/${files.length}: ${f.name}`);
+      $('#bar i').style.width=Math.round(i/files.length*100)+'%';
+      const r=await fetch('/api/upload?defer=1&name='+encodeURIComponent(f.name),{method:'POST',body:f});
+      const j=await r.json();
+      if(!r.ok)throw new Error(j.error||`อัปโหลด ${f.name} ไม่สำเร็จ`);
+      if(staged.some(source=>source.sha256===j.sha256)){
+        await deleteServerJob(j.job);
+        const expectedIndex=expectedNames.indexOf(f.name);if(expectedIndex>=0)expectedNames.splice(expectedIndex,1);
+        msg(`ข้ามไฟล์ซ้ำ: ${f.name}`);
+        saveStaging();
+        continue;
+      }
+      staged.push({job:j.job,name:j.name||f.name,sha256:j.sha256});
+      addedUnique=true;
+      const expectedIndex=expectedNames.indexOf(f.name);if(expectedIndex>=0)expectedNames.splice(expectedIndex,1);
+      saveStaging();
+    }
+    if(addedUnique){
+      if(wasAnalyzed){await detachCurrentResult();mergeId=newMergeId()}
+      if(!mergeId)mergeId=newMergeId();
+      autoCombine=true;
+    }else{
+      $('#bar').style.display='none';
+      msg(staged.length?'ไม่มีไฟล์ใหม่ ไฟล์ที่อัปโหลดมีอยู่แล้ว':'ไม่พบไฟล์ที่ไม่ซ้ำ',false);
+      if(wasAnalyzed)saveState();
+    }
+  }catch(e){
+    $('#bar').style.display='none';msg(`อัปโหลดไม่ครบ (${staged.length} ไฟล์สำเร็จ) — เลือกไฟล์ที่เหลือเพื่อลองอีกครั้ง: ${e.message}`,true);
+    if(addedUnique){
+      if(wasAnalyzed){await detachCurrentResult();mergeId=newMergeId()}
+      if(!mergeId)mergeId=newMergeId();
+      autoCombine=true;
+    }else if(wasAnalyzed)saveState();
+  }finally{uploading=false;$('#pick').disabled=false;renderFiles()}
+  if(autoCombine)await combineStaged();
+}
+async function combineStaged(){
+  if(!staged.length){msg('ยังไม่มีไฟล์ที่อัปโหลดสำเร็จ',true);return}
+  if(expectedNames.length&&!confirm(`ยังมีไฟล์ที่อัปโหลดไม่สำเร็จ ${expectedNames.join(', ')} ต้องการวิเคราะห์เฉพาะไฟล์ที่แสดงในรายการหรือไม่?`))return;
+  combining=true;renderFiles();
+  $('#bar').style.display='block';$('#bar i').style.width='100%';
+  msg(`กำลังรวม ${staged.length} ไฟล์และเริ่มวิเคราะห์…`);
+  try{
+    const r=await fetch('/api/jobs/combine',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jobs:staged.map(x=>x.job),merge_id:mergeId})});
+    const j=await r.json();if(!r.ok)throw new Error(j.error||'รวมไฟล์ไม่สำเร็จ');
+    for(const duplicateId of j.duplicates||[])await deleteServerJob(duplicateId);
+    if(Array.isArray(j.files))staged=j.files;
+    job=j.job;mergeId=job;R=null;orig=[];cur=[];bin=[];sel=1;view='cur';
+    expectedNames=[];saveState();
+    $('#drop').style.display='none';$('main').style.display='none';
+    analysisRunning=true;
+    poll();
+  }catch(e){$('#bar').style.display='none';msg('รวมไฟล์ไม่สำเร็จ: '+e.message,true)}
+  finally{combining=false;renderFiles()}
+}
+$('#combineFiles').onclick=combineStaged;
+$('#clearFiles').onclick=clearFiles;
+async function poll(savedState=null){
+  try{
+    const r=await fetch('/api/jobs/'+job),j=await r.json();
+    if(!r.ok){analysisRunning=false;renderFiles();$('#bar').style.display='none';msg(j.error||'โหลดงานเดิมไม่สำเร็จ',true);return}
+    $('#bar i').style.width=Math.max(3,(j.progress||0)*100)+'%';msg(j.msg);
+    if(j.status==='running'){analysisRunning=true;renderFiles();setTimeout(()=>poll(savedState),600);return}
+    analysisRunning=false;
+    $('#bar').style.display='none';
+    if(j.status==='error'){renderFiles();msg('วิเคราะห์ไม่สำเร็จ: '+j.error,true);return}
+    R=j.result;R.name=(j.name||'document').replace(/\.pdf$/i,'');
+    if(Array.isArray(j.files))staged=j.files;
+    mergeId=job;
+    renderFiles();init(savedState);
+  }catch(e){analysisRunning=false;renderFiles();$('#bar').style.display='none';msg('โหลดงานไม่สำเร็จ: '+e.message,true)}
+}
+function restoreSession(){
+  try{
+    const raw=localStorage.getItem(STATE_KEY);
+    if(!raw)return;
+    const saved=JSON.parse(raw);
+    if(saved&&saved.version===1&&saved.stage&&Array.isArray(saved.stage.jobs)&&Array.isArray(saved.stage.names)
+      &&saved.stage.names.every(name=>typeof name==='string')
+      &&typeof saved.stage.mergeId==='string'&&/^[0-9a-f]{32}$/.test(saved.stage.mergeId)
+      &&saved.stage.jobs.every(x=>x&&typeof x.job==='string'&&/^[0-9a-f]{32}$/.test(x.job)&&typeof x.name==='string')){
+      staged=saved.stage.jobs;expectedNames=saved.stage.names;mergeId=saved.stage.mergeId;
+      $('#drop').style.display='block';renderFiles();
+      msg(`กู้คืนรายการไฟล์แล้ว ${staged.length} ไฟล์ — เพิ่ม/ลบไฟล์ได้ หรือระบบจะรวมและวิเคราะห์อัตโนมัติ`);
+      if(staged.length&&!expectedNames.length)setTimeout(()=>combineStaged(),0);
+      return;
+    }
+    if(!saved||saved.version!==1||typeof saved.job!=='string'||!/^[0-9a-f]{32}$/.test(saved.job)){
+      localStorage.removeItem(STATE_KEY);msg('ข้อมูลการกู้คืนไม่ถูกต้อง จึงเริ่มงานใหม่',true);return;
+    }
+    if(Array.isArray(saved.files)&&saved.files.every(x=>x&&typeof x.job==='string'&&typeof x.name==='string'))staged=saved.files;
+    mergeId=typeof saved.mergeId==='string'?saved.mergeId:saved.job;
+    job=saved.job;$('#drop').style.display='none';renderFiles();$('#bar').style.display='block';poll(saved);
+  }catch(e){msg('กู้คืนงานหลังรีเฟรชไม่สำเร็จ: '+e.message,true)}
+}
+function saveState(){
+  if(!job)return;
+  try{
+    const state={version:1,job,mergeId,files:staged,filters:{search:$('#docSearch').value,group:$('#docGroup').value,type:$('#docType').value}};
+    if(R)Object.assign(state,{cur,bin,sel,view,dropBlank:$('#dropBlank').checked});
+    localStorage.setItem(STATE_KEY,JSON.stringify(state));
+  }catch(e){msg('บันทึกงานในเบราว์เซอร์ไม่สำเร็จ: '+e.message,true)}
+}
+function defName(d,i){return(d.doc_no||(d.label+'_'+String(i+1).padStart(2,'0'))).replace(/[\\/:*?"<>|]+/g,'_')}
+function init(savedState=null){
+  orig=R.docs.map((d,i)=>({...d,name:defName(d,i),pages:[...d.pages],edited:false}));
+  cur=JSON.parse(JSON.stringify(orig));bin=[];sel=1;
+  populateFilters();
+  let restoreWarning='';
+  if(savedState&&Array.isArray(savedState.cur)&&Array.isArray(savedState.bin)&&
+      savedState.cur.every(d=>d&&typeof d.name==='string'&&typeof d.group==='string'&&Array.isArray(d.pages)&&
+        d.pages.every(n=>Number.isInteger(n)&&n>=1&&n<=R.n_pages))&&
+      savedState.bin.every(n=>Number.isInteger(n)&&n>=1&&n<=R.n_pages)){
+    cur=JSON.parse(JSON.stringify(savedState.cur));bin=[...savedState.bin];
+    sel=Number.isInteger(savedState.sel)?Math.max(1,Math.min(R.n_pages,savedState.sel)):1;
+    view='cur';
+    $('#dropBlank').checked=savedState.dropBlank!==false;
+    if(savedState.filters&&typeof savedState.filters==='object'){
+      $('#docSearch').value=typeof savedState.filters.search==='string'?savedState.filters.search:'';
+      $('#docGroup').value=typeof savedState.filters.group==='string'?savedState.filters.group:'';
+    }
+  }else if(savedState&&savedState.cur){
+    restoreWarning='ข้อมูลการแก้ไขเดิมไม่ถูกต้อง จึงแสดงผลวิเคราะห์ต้นฉบับ';
+  }
+  populateFilters(savedState&&savedState.filters?savedState.filters.type:'');
+  drop.style.display='none';$('main').style.display='grid';$('#exp').disabled=false;
+  if(restoreWarning)msg(restoreWarning,true);else msg('');
+  const o=R.stats.ocr;
+  const b=$('#banner');
+  if(o&&!o.thai){b.style.display='block';b.textContent='⚠ มีหน้าที่ใช้ OCR แต่เครื่องนี้ยังไม่ได้ติดตั้งภาษาไทยของ Tesseract (tha) — ข้อความไทยในหน้าสแกนจะอ่านไม่ได้ ดูวิธีติดตั้งใน README'}
+  else b.style.display='none';
+  render();show(sel);saveState();
+}
+
+/* ---------- แสดงผล ---------- */
+const docs=()=>view==='cur'?cur:orig;
+function populateFilters(selectedType=''){
+  const groupSelect=$('#docGroup');
+  if(groupSelect.options.length===1){
+    groupSelect.innerHTML='<option value="">ทุกหมวด</option>'+Object.entries(R.groups).map(([key,label])=>`<option value="${key}">${esc(label)}</option>`).join('');
+  }
+  const group=groupSelect.value;
+  const types=DOCUMENT_TYPES.filter(t=>!group||t.group===group);
+  $('#docType').innerHTML='<option value="">ทุกชนิด</option>'+
+    types.map(t=>`<option value="${t.subtype}">${esc(t.label)}</option>`).join('');
+  $('#docType').value=types.some(t=>t.subtype===selectedType)?selectedType:'';
+}
+function hasActiveFilter(){
+  return Boolean($('#docSearch').value.trim()||$('#docGroup').value||$('#docType').value);
+}
+function matchesCurrentFilter(d){
+  const query=$('#docSearch').value.trim().toLocaleLowerCase();
+  const group=$('#docGroup').value,type=$('#docType').value;
+  return (!query||[d.name,d.doc_no,d.label,d.group,d.subtype,R.groups[d.group]]
+    .some(v=>String(v||'').toLocaleLowerCase().includes(query)))
+    &&(!group||d.group===group)&&(!type||d.subtype===type);
+}
+function matchingPages(){
+  return [...new Set(docs().filter(matchesCurrentFilter).flatMap(d=>d.pages))].sort((a,b)=>a-b);
+}
+function viewerPages(){
+  return hasActiveFilter()?matchingPages():Array.from({length:R.n_pages},(_,i)=>i+1);
+}
+function render(){
+  const ds=docs(),ed=view==='cur';
+  let h='';
+  if(ed&&bin.length)h+=`<div id="bin" data-bin="1"><b class="warn">หน้าที่ยังไม่ถูกจัดเข้าเอกสาร (จะไม่ถูกส่งออก)</b> — ลากกลับไปใส่เอกสารได้<div class="pgs">${bin.map(n=>pg(n,-1)).join('')}</div></div>`;
+  const matches=ds.map((d,i)=>({d,i})).filter(({d})=>matchesCurrentFilter(d));
+  matches.forEach(({d,i})=>{
+    const warn=d.flags.some(f=>f.level!=='info'),col=COLORS[d.group]||'#999';
+    const opts=Object.entries(R.groups).map(([k,v])=>`<option value="${k}" ${k===d.group?'selected':''}>${esc(v)}</option>`).join('');
+    h+=`<div class="doc ${warn?'flag':''}" style="--c:${col}" data-i="${i}">
+      <div class="dh"><b>#${i+1}</b>
+        <input class="nm" value="${esc(d.name)}" ${ed?'':'disabled'} onchange="cur[${i}].name=this.value;cur[${i}].edited=true;saveState()">
+        <select ${ed?'':'disabled'} onchange="cur[${i}].group=this.value;cur[${i}].edited=true;render()">${opts}</select>
+        <span class="badge ${d.conf>=.75?'ok':'warn'}" title="ความมั่นใจประเภท">${esc(d.label)} ${(d.conf*100)|0}%</span>
+        ${i>0?`<span class="badge ${d.start_conf>=.75?'ok':'warn'}" title="ความมั่นใจจุดเริ่ม">จุดเริ่ม ${(d.start_conf*100)|0}%</span>`:''}
+        ${ed?`<input class="rg" title="ช่วงหน้า เช่น 3-5,8" value="${rng(d.pages)}" onchange="setRange(${i},this.value)">
+        <button onclick="merge(${i})" ${i?'':'disabled'} title="รวมกับเอกสารก่อนหน้า">⤴ รวม</button>
+        <button onclick="removeDoc(${i})" title="นำหน้าออกจากเอกสารนี้">✕</button>`:''}
+      </div>
+      <div class="pgs" data-i="${i}">${d.pages.map((n,k)=>pg(n,i)+(ed&&k<d.pages.length-1?`<button class="cut" title="แยกเป็นสองเอกสารตรงนี้" onclick="split(${i},${n})">✂</button>`:'')).join('')}</div>
+      ${ed?`<div class="doc-actions"><button class="p" onclick="exportDocument(${i})">⬇ บันทึกเป็น PDF</button></div>`:''}
+      ${d.flags.length||d.type_evidence?.length?`<details class="fl"><summary class="${warn?'warn':'mut'}">${d.flags.length?d.flags.length+' ข้อสังเกต':'เหตุผลของระบบ'}</summary>
+        ${d.flags.map(f=>`<div class="${f.level==='info'?'mut':f.level==='error'?'err':'warn'}">• ${esc(f.msg)}</div>`).join('')}
+        <div class="mut">ประเภท: ${esc((d.type_evidence||[]).join(' · '))}</div></details>`:''}
+    </div>`;
+  });
+  $('#docs').innerHTML=matches.length?h:`${h}<p class="mut">ไม่พบชุดเอกสารที่ตรงกับคำค้นหา</p>`;
+  $('#exp').disabled=!cur.length;
+  if(hasActiveFilter()&&!matchingPages().length){
+    $('#pageImage').innerHTML='<p class="mut">ไม่พบหน้าที่ตรงกับคำค้นหา</p>';
+    $('#prev').innerHTML='<div class="page-context">ไม่มีภาพตัวอย่างสำหรับตัวกรองนี้</div>';
+  }
+  wire();saveState();
+}
+function rng(a){const s=[...a].sort((x,y)=>x-y),o=[];let i=0;while(i<s.length){let j=i;while(j+1<s.length&&s[j+1]===s[j]+1)j++;o.push(i===j?s[i]:s[i]+'-'+s[j]);i=j+1}return o.join(',')}
+function pg(n,i){const p=R.pages[n-1],q=p.quality<.6||p.issues.length;
+  return `<div class="pg ${p.blank?'bl':''} ${n===sel?'sel':''}" draggable="${view==='cur'}" data-n="${n}" data-d="${i}" onclick="show(${n})">
+    <span class="m">${p.method==='ocr'?'OCR':p.method==='blank'?'ว่าง':'T'}${q?' ⚠':''}</span>
+    <img loading="lazy" src="/api/jobs/${job}/page/${n}.png?w=180"><div>หน้า ${n}</div></div>`}
+
+/* ---------- แก้ไข: ย้าย/แยก/รวม/ช่วงหน้า ---------- */
+function wire(){
+  document.querySelectorAll('.pg[draggable=true]').forEach(e=>{
+    e.ondragstart=ev=>{drag={n:+e.dataset.n,from:+e.dataset.d};ev.dataTransfer.setData('text/plain','p')};
+  });
+  document.querySelectorAll('.pgs,#bin').forEach(e=>{
+    e.ondragover=ev=>ev.preventDefault();
+    e.ondrop=ev=>{ev.preventDefault();if(!drag)return;const t=e.closest('.doc');movePage(drag.n,t?+t.dataset.i:-1);drag=null};
+  });
+}
+function strip(n){cur.forEach(d=>d.pages=d.pages.filter(x=>x!==n));bin=bin.filter(x=>x!==n)}
+function clean(){cur=cur.filter(d=>d.pages.length)}
+function movePage(n,to){
+  if(view!=='cur')return;
+  const target=to>=0?cur[to]:null;strip(n);
+  if(target){target.pages.push(n);target.pages.sort((a,b)=>a-b);target.edited=true}else bin.push(n);
+  clean();render();
+}
+function split(i,after){
+  const d=cur[i],a=d.pages.filter(x=>x<=after),b=d.pages.filter(x=>x>after);
+  d.pages=a;d.edited=true;
+  const nd={...JSON.parse(JSON.stringify(d)),pages:b,doc_no:null,flags:[],type_evidence:['แยกโดยผู้ใช้'],start_conf:1,edited:true};
+  nd.name=(nd.label||'doc')+'_'+String(cur.length+1).padStart(2,'0');
+  cur.splice(i+1,0,nd);render();
+}
+function merge(i){if(i<1)return;const a=cur[i-1],b=cur[i];a.pages=[...a.pages,...b.pages].sort((x,y)=>x-y);a.edited=true;cur.splice(i,1);render()}
+function removeDoc(i){bin.push(...cur[i].pages);cur.splice(i,1);render()}
+function setRange(i,s){
+  const out=new Set();
+  for(const part of s.split(',')){const m=part.trim().match(/^(\d+)(?:\s*-\s*(\d+))?$/);if(!m)continue;
+    const a=+m[1],b=+(m[2]||m[1]);for(let n=Math.min(a,b);n<=Math.max(a,b);n++)if(n>=1&&n<=R.n_pages)out.add(n)}
+  const old=cur[i].pages;
+  cur.forEach((d,k)=>{if(k!==i)d.pages=d.pages.filter(x=>!out.has(x))});
+  bin=bin.filter(x=>!out.has(x));
+  old.filter(x=>!out.has(x)).forEach(x=>bin.push(x));
+  cur[i].pages=[...out].sort((a,b)=>a-b);cur[i].edited=true;clean();render();
+}
+function highlightJson(json){
+  return json.replace(/("(?:\\.|[^"\\])*")(\s*:)?|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|\b(true|false|null)\b/g,
+    (token,string,colon,number,literal)=>{
+      if(string)return `<span class="json-${colon?'key':'string'}">${esc(string)}${esc(colon||'')}</span>`;
+      if(number)return `<span class="json-number">${esc(number)}</span>`;
+      return `<span class="json-literal">${esc(literal)}</span>`;
+    });
+}
+$('#dropBlank').onchange=saveState;
+
+/* ---------- พรีวิว + ข้อความที่อ่านได้ ---------- */
+async function exportDocument(index){
+  const doc=cur[index];
+  if(!doc||!doc.pages.length)return;
+  msg(`กำลังสร้าง PDF: ${doc.name}`);
+  try{
+    const filename=await exportPdfDocument(doc,uniqueExportName(index));
+    msg(`บันทึก PDF แล้ว: ${filename}`);
+  }catch(e){msg(`บันทึก PDF ไม่สำเร็จ: ${e.message}`,true)}
+}
+async function copyOcrJson(){
+  try{
+    await navigator.clipboard.writeText(displayedOcrJson);
+    msg('คัดลอก JSON แล้ว');
+  }catch(e){msg('คัดลอก JSON ไม่สำเร็จ: '+e.message,true)}
+}
+function show(n){
+  if(!R)return;
+  const pages=viewerPages();
+  if(!pages.length)return;
+  n=Math.max(1,Math.min(R.n_pages,n));
+  if(!pages.includes(n))n=pages[0];
+  sel=n;const p=R.pages[n-1];
+  const ds=docs(),setIndex=ds.findIndex(d=>d.pages.includes(n));
+  const currentSet=setIndex>=0?ds[setIndex]:null;
+  document.querySelectorAll('.pg').forEach(e=>e.classList.toggle('sel',+e.dataset.n===n));
+  $('#pageImage').innerHTML=`<div class="page-frame"><img src="/api/jobs/${job}/page/${n}.png?w=1600" alt="ภาพตัวอย่าง PDF หน้า ${n}">
+    <span class="page-number">หน้า ${n} / ${R.n_pages}</span></div>
+    <button class="image-nav prev" onclick="navigatePage(-1)" aria-label="หน้าก่อนหน้า" ${pages.indexOf(n)<=0?'disabled':''}>‹</button>
+    <button class="image-nav next" onclick="navigatePage(1)" aria-label="หน้าถัดไป" ${pages.indexOf(n)>=pages.length-1?'disabled':''}>›</button>`;
+  const ocrJson={
+    page:p.n,
+    method:p.method,
+    text:p.snippet||'',
+    ocr_confidence_percent:p.ocr_conf??null,
+    quality:p.quality,
+    issues:p.issues,
+    reason:p.reason
+  };
+  displayedOcrJson=JSON.stringify(ocrJson,null,2);
+  $('#prev').innerHTML=`<div class="page-context">หน้า ${n}/${R.n_pages} · ${currentSet?`ชุดที่ ${setIndex+1}/${ds.length} · ${esc(currentSet.doc_no||currentSet.name)}`:'ยังไม่ได้จัดเข้าชุด'}</div>
+    <div class="ocr-head"><h2>ข้อความที่ OCR อ่านได้</h2></div>
+    <pre class="ocr-text">${esc(p.snippet||'ไม่พบข้อความที่อ่านได้ในหน้านี้')}</pre>
+    <details class="json-details" open><summary>ข้อมูล JSON</summary>
+      <div class="ocr-head"><button onclick="copyOcrJson()">คัดลอก JSON</button></div>
+      <pre>${highlightJson(displayedOcrJson)}</pre>
+    </details>
+    <p class="confidence">ความมั่นใจในการอ่านข้อความ: ${Math.round(p.quality*100)}%</p>`;
+  saveState();
+}
+function navigatePage(offset){
+  const pages=viewerPages(),index=pages.indexOf(sel),next=index+offset;
+  if(next>=0&&next<pages.length)show(pages[next]);
+}
+addEventListener('keydown',e=>{if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT')return;if(e.key==='ArrowRight')navigatePage(1);if(e.key==='ArrowLeft')navigatePage(-1)});
+
+/* ---------- ส่งออก ---------- */
+function openExportDialog(){
+  $('#exportChoices').innerHTML=cur.map((doc,index)=>`<label class="export-item">
+    <input type="checkbox" class="export-choice" value="${index}" ${doc.pages.length?'checked':'disabled'}>
+    <span>${esc(doc.name||`เอกสาร_${String(index+1).padStart(2,'0')}`)}<br><small>หน้า ${esc(rng(doc.pages)||'ไม่มีหน้า')}</small></span>
+  </label>`).join('');
+  updateSelectAll();
+  $('#exportDialog').showModal();
+}
+function selectedExportIndexes(){
+  return [...document.querySelectorAll('.export-choice:checked')].map(input=>Number(input.value));
+}
+function updateSelectAll(){
+  const choices=[...document.querySelectorAll('.export-choice:not(:disabled)')];
+  const selected=choices.filter(input=>input.checked).length;
+  const selectAll=$('#selectAllExports');
+  selectAll.checked=choices.length>0&&selected===choices.length;
+  selectAll.indeterminate=selected>0&&selected<choices.length;
+}
+function uniqueExportName(index){
+  const doc=cur[index],duplicates=cur.filter(item=>item.name===doc.name).length;
+  return duplicates>1?`${doc.name}_${String(index+1).padStart(2,'0')}`:doc.name;
+}
+function downloadBlob(blob,filename){
+  const url=URL.createObjectURL(blob),link=document.createElement('a');
+  link.href=url;link.download=filename;document.body.append(link);link.click();link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+async function exportPdfDocument(doc,name=doc.name){
+  const response=await fetch(`/api/jobs/${job}/export/pdf`,{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({name,pages:doc.pages,drop_blank:$('#dropBlank').checked})
+  });
+  if(!response.ok){
+    const error=await response.json();
+    throw new Error(error.error||`ส่งออก ${name} ไม่สำเร็จ`);
+  }
+  const filename=decodeURIComponent(response.headers.get('X-Download-Filename')||'document.pdf');
+  downloadBlob(await response.blob(),filename);
+  return filename;
+}
+async function exportPdfDocuments(indexes){
+  if(!indexes.length){msg('เลือกเอกสารที่ต้องการดาวน์โหลดก่อน',true);return}
+  const completed=[];
+  $('#exportDialog').close();
+  try{
+    for(const index of indexes){
+      const doc=cur[index];
+      if(!doc||!doc.pages.length)continue;
+      await exportPdfDocument(doc,uniqueExportName(index));
+      completed.push(doc.name);
+      if(indexes.length>1)await new Promise(resolve=>setTimeout(resolve,300));
+    }
+    msg(`ดาวน์โหลด PDF แล้ว ${completed.length} ไฟล์${completed.length>1?' — หากเบราว์เซอร์ถาม ให้เลือกอนุญาตดาวน์โหลดหลายไฟล์':''}`);
+  }catch(e){msg(`ดาวน์โหลด PDF ไม่ครบ (${completed.length}/${indexes.length} ไฟล์): ${e.message}`,true)}
+}
+async function exportAllZip(){
+  if(bin.length&&!confirm(`มี ${bin.length} หน้าที่ยังไม่ได้จัดเข้าเอกสาร และจะไม่ถูกส่งออก ต้องการส่งออกต่อหรือไม่?`))return;
+  msg('กำลังสร้างไฟล์…');
+  try{
+    const body={drop_blank:$('#dropBlank').checked,docs:cur.map(d=>({name:d.name,pages:d.pages,type:d.group}))};
+    const r=await fetch(`/api/jobs/${job}/export`,{method:'POST',body:JSON.stringify(body)});
+    if(!r.ok){msg((await r.json()).error||'ส่งออกไม่สำเร็จ',true);return}
+    const miss=r.headers.get('X-Pages-Not-Exported');
+    downloadBlob(await r.blob(),(R.name||'document')+'_split.zip');
+    $('#exportDialog').close();
+    msg('ส่งออกแล้ว'+(miss?` — หน้าที่ไม่ได้ส่งออก: ${miss}`:' — ครบทุกหน้า'));
+  }catch(e){msg(`ส่งออก ZIP ไม่สำเร็จ: ${e.message}`,true)}
+}
+$('#exp').onclick=openExportDialog;
+$('#closeExport').onclick=()=>$('#exportDialog').close();
+$('#selectAllExports').onchange=e=>{
+  document.querySelectorAll('.export-choice:not(:disabled)').forEach(input=>input.checked=e.target.checked);
+  updateSelectAll();
+};
+$('#exportChoices').onchange=e=>{if(e.target.matches('.export-choice'))updateSelectAll()};
+$('#exportSelectedPdf').onclick=()=>exportPdfDocuments(selectedExportIndexes());
+$('#exportAllPdf').onclick=()=>exportPdfDocuments(cur.map((_,index)=>index));
+$('#exportAllZip').onclick=exportAllZip;
+function applyFilters(){
+  render();
+  const pages=matchingPages();
+  if(pages.length)show(pages[0]);
+}
+$('#docSearch').oninput=applyFilters;
+$('#docGroup').onchange=()=>{populateFilters();applyFilters()};
+$('#docType').onchange=applyFilters;
+addEventListener('pagehide',saveState);
+restoreSession();
+</script>
+</body>
+</html>
