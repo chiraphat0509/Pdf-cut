@@ -38,6 +38,36 @@ def clean_thai_spaces(t, aggressive=False):
     return "".join(out)
 
 
+def clean_bilingual_ocr(text: str) -> str:
+    if not text:
+        return ""
+
+    # 1. ลบเศษขยะ/เลขไทย/สัญลักษณ์ ที่อยู่หน้าคีย์เวิร์ดประจำใบเสร็จ (เช่น ๑ FAX:, "al 6 Shenton)
+    text = re.sub(
+        r'^[ \t]*[๑-๙\W_a-z]{1,4}(?=(FAX|TEL|PHONE|MOBILE|EMAIL|GST|REG|INVOICE|TAX)\b)',
+        '',
+        text,
+        flags=re.MULTILINE | re.IGNORECASE
+    )
+
+    # 2. แก้คำยอดฮิตในตาราง เช่น "INVOICE น 1" -> "INVOICE No. 1"
+    text = re.sub(r'\bINVOICE\s+น\s+(\d+)', r'INVOICE No. \1', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bINVOICE\s+น\b', 'INVOICE', text, flags=re.IGNORECASE)
+
+    # 3. ลบพยัญชนะไทยโดดเดี่ยวที่หลุดมาอยู่กลางคำภาษาอังกฤษหรือตัวเลข (เช่น ABC ก 123)
+    text = re.sub(r'(?<=[A-Za-z0-9])\s+[ก-ฮ]\s+(?=[A-Za-z0-9])', ' ', text)
+
+    # 4. ลบสระ/วรรณยุกต์ลอยที่ไปเกาะติดกับตัวอักษรภาษาอังกฤษ (เช่น Tั, E่)
+    text = re.sub(r'(?<=[A-Za-z])[่้๊๋็์ิีึืุูั]', '', text)
+
+    # 5. ลบเศษขยะ 1-2 ตัวพิมพ์เล็กที่ขึ้นต้นบรรทัดก่อนหน้าตัวเลข (เช่น "al 6 Shenton Way")
+    text = re.sub(r'^[ \t]*[\"\']?[a-z]{1,2}\s+(?=\d)', '', text, flags=re.MULTILINE)
+
+    # 6. ตัดช่องว่างซ้ำซ้อน
+    text = re.sub(r'[ \t]+', ' ', text)
+    return text.strip()
+
+
 def direct_text(pg):
     """ดึงข้อความจากชั้นข้อความของ PDF
     วรรณยุกต์/สระบน-ล่างเป็นอักขระกว้าง 0 ซึ่งตัวเรียงตามแกน x ของไลบรารีมักเรียงสลับ
@@ -121,32 +151,66 @@ def preprocess(img):
 def run_ocr(img, cfg):
     import pytesseract
     info = ocr_info(cfg)
-    lang = "tha+eng" if info["thai"] else "eng"
+    
+    # หน้าเอกสารแบบ Invoice มีหลายคอลัมน์/ตาราง ต้องใช้ --psm 4 หรือ --psm 3
+    # ไม่ควรใช้ --psm 6 เพราะมันจะอ่านกวาดข้อความสองฝั่งชนกัน
+    ocr_config = "--psm 4"
     img, ang = preprocess(img)
 
-    def once(im):
-        d = pytesseract.image_to_data(im, lang=lang, config="--psm 6", output_type=pytesseract.Output.DICT)
+    def extract_data(im, target_lang):
+        d = pytesseract.image_to_data(
+            im, 
+            lang=target_lang, 
+            config=ocr_config, 
+            output_type=pytesseract.Output.DICT
+        )
         lines, confs = {}, []
         for i, w in enumerate(d["text"]):
             if not w.strip() or float(d["conf"][i]) < 0:
                 continue
             confs.append(float(d["conf"][i]))
+            # จัดกลุ่มตาม block, paragraph, line เพื่อรักษา layout ของคอลัมน์
             lines.setdefault((d["block_num"][i], d["par_num"][i], d["line_num"][i]), []).append(w)
-        return "\n".join(" ".join(v) for v in lines.values()), (sum(confs) / len(confs) if confs else 0.0)
+        
+        full_text = "\n".join(" ".join(v) for v in lines.values())
+        avg_conf = sum(confs) / len(confs) if confs else 0.0
+        return full_text, avg_conf
 
-    text, conf = once(img)
+    # กรณีติดตั้งทั้ง 2 ภาษา
+    if info["thai"]:
+        # 1. ลองอ่านด้วย 'eng' ล้วนรอบแรกก่อน
+        text_eng, conf_eng = extract_data(img, "eng")
+        
+        # 2. ตรวจสอบว่าในภาพมีเนื้อหาเป็นภาษาไทยจริงหรือไม่ โดยลองสุ่ม/อ่านด้วย tha
+        text_bi, conf_bi = extract_data(img, "tha+eng")
+        
+        # นับจำนวนตัวอักษรไทยแท้ ๆ (ไม่นับเลขไทย)
+        thai_chars_count = len(re.findall(r'[\u0E01-\u0E2E]', text_bi))
+        
+        # ถ้ามีตัวหนังสือไทยเป็นกอบเป็นกำ (> 10 ตัว) แสดงว่าเป็นเอกสารสองภาษาจริง
+        if thai_chars_count >= 10:
+            text, conf, used_lang = text_bi, conf_bi, "tha+eng"
+        else:
+            # ถ้าเป็นภาษาอังกฤษล้วน ให้ใช้ผลลัพธ์จาก eng ล้วน (ขยะไทยจะหายไปทันที 100%)
+            text, conf, used_lang = text_eng, conf_eng, "eng"
+    else:
+        text, conf = extract_data(img, "eng")
+        used_lang = "eng"
+
     rotated = 0
     if conf < 50:  # อาจหมุนผิดทิศ -> ลองถาม OSD
         try:
             osd = pytesseract.image_to_osd(img, output_type=pytesseract.Output.DICT)
             r = int(osd.get("rotate", 0))
             if r:
-                t2, c2 = once(img.rotate(-r, expand=True, fillcolor=255))
+                t2, c2 = extract_data(img.rotate(-r, expand=True, fillcolor=255), used_lang)
                 if c2 > conf:
                     text, conf, rotated = t2, c2, r
         except Exception:  # noqa
             pass
-    return clean_thai_spaces(text, aggressive=True), conf, lang, ang, rotated
+
+    text = clean_thai_spaces(text, aggressive=True)
+    return clean_bilingual_ocr(text), conf, used_lang, ang, rotated
 
 
 def _letters(t):
